@@ -54,9 +54,14 @@ async def forward_request(request: Request, target_url: str):
             params=request.query_params
         )
 
+        try:
+            content = response.json()
+        except:
+            content = {"detail": response.text}
+
         return JSONResponse(
             status_code=response.status_code,
-            content=response.json() if response.content else None
+            content=content
         )
 
     except httpx.RequestError as e:
