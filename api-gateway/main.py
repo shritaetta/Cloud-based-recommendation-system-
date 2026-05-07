@@ -1,0 +1,83 @@
+import httpx
+from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from jose import jwt
+from core.config import settings
+
+
+app = FastAPI(title="API Gateway")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+async def forward_request(request: Request, target_url: str):
+    client = httpx.AsyncClient()
+    body = await request.body()
+    headers = dict(request.headers)
+    headers.pop("host", None) # Remove host header so httpx sets it correctly
+    
+    try:
+        response = await client.request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=body,
+            params=request.query_params
+        )
+        return JSONResponse(
+            status_code=response.status_code,
+            content=response.json() if response.content else None,
+            headers=dict(response.headers)
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Service unavailable: {str(e)}")
+    finally:
+        await client.aclose()
+
+def verify_token(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.api_route("/api/users/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def route_user_service(path: str, request: Request):
+    # Some routes in user-service might be public (like login/register)
+    public_paths = ["register", "login"]
+    if path not in public_paths:
+        verify_token(request)
+        
+    target_url = f"{settings.user_service_url}/{path}"
+    return await forward_request(request, target_url)
+
+@app.api_route("/api/resume/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def route_resume_service(path: str, request: Request):
+    verify_token(request)
+    target_url = f"{settings.resume_service_url}/api/resume/{path}"
+    return await forward_request(request, target_url)
+
+@app.api_route("/api/internships/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def route_internship_service(path: str, request: Request):
+    # Some routes might be public, like GET /internships
+    if request.method != "GET":
+        verify_token(request)
+    target_url = f"{settings.internship_service_url}/api/internships/{path}"
+    return await forward_request(request, target_url)
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "api-gateway"}

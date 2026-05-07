@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: internship_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: internship_admin
+      POSTGRES_PASSWORD: internship_password
+      POSTGRES_MULTIPLE_DATABASES: user_db,resume_db,recommendation_db,skillgap_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U internship_admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: internship_api_gateway
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:8001
+      - SECRET_KEY=your-super-secret-jwt-key
+    depends_on:
+      - user-service
+
+  user-service:
+    build: ./user-service
+    container_name: internship_user_service
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://internship_admin:internship_password@postgres:5432/user_db
+      - SECRET_KEY=your-super-secret-jwt-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  resume-service:
+    build: ./resume-service
+    container_name: internship_resume_service
+    restart: always
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://internship_admin:internship_password@postgres:5432/resume_db
+      - SECRET_KEY=your-super-secret-jwt-key
+    volumes:
+      - ./resume-service/uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  internship-service:
+    build: ./internship-service
+    container_name: internship_service
+    restart: always
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://internship_admin:internship_password@postgres:5432/recommendation_db
+      - SECRET_KEY=your-super-secret-jwt-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
