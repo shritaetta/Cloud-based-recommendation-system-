@@ -57,7 +57,7 @@ async def forward_request(request: Request, target_url: str):
         try:
             content = response.json()
         except:
-            content = {"detail": response.text}
+            content = response.text
 
         return JSONResponse(
             status_code=response.status_code,
