@@ -1,5 +1,5 @@
 import httpx
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt
@@ -43,7 +43,11 @@ async def forward_request(request: Request, target_url: str):
     body = await request.body()
 
     headers = dict(request.headers)
+    
+    # Remove hop-by-hop headers and host
     headers.pop("host", None)
+    headers.pop("content-length", None)
+    headers.pop("connection", None)
 
     try:
         response = await client.request(
@@ -54,14 +58,21 @@ async def forward_request(request: Request, target_url: str):
             params=request.query_params
         )
 
-        try:
-            content = response.json()
-        except:
-            content = response.text
+        # Build response excluding potentially conflicting headers
+        excluded_headers = [
+            "content-encoding", "content-length", 
+            "transfer-encoding", "connection"
+        ]
+        response_headers = {
+            k: v for k, v in response.headers.items() 
+            if k.lower() not in excluded_headers
+        }
 
-        return JSONResponse(
+        return Response(
+            content=response.content,
             status_code=response.status_code,
-            content=content
+            headers=response_headers,
+            media_type=response.headers.get("content-type")
         )
 
     except httpx.RequestError as e:

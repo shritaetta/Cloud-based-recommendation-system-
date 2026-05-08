@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from api import internships
@@ -23,6 +24,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Internship Service",
     lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(internships.router, prefix="/api/internships", tags=["internships"])

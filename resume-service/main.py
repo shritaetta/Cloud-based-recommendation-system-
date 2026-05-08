@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from api import resume
 from core.database import engine, Base
 from models.resume import Resume # Required to register the model metadata
@@ -13,6 +14,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Resume Service",
     lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(resume.router, prefix="/api/resume", tags=["resume"])
